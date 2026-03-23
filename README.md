@@ -54,14 +54,17 @@ Managed by `uv` via `pyproject.toml`. Key packages:
 
 ```
 da4-assignment2/
-├── analysis.py          # main script — single run reproduces everything
+├── analysis.py
 ├── data/
-│   ├── wdi_raw.csv          # ← required for reproducibility
-│   ├── services_cache.csv   # ← required for reproducibility
-│   └── income_cache.csv     # ← required for reproducibility
+│   ├── wdi_raw.csv              # ← required for reproducibility
+│   ├── services_cache.csv       # ← required for reproducibility
+│   └── income_cache.csv         # ← required for reproducibility
 ├── output/
-│   └── figures/         # generated on first run
+│   └── figures/                 # generated on first run
 ├── DA4_Assignment_2_Uladzislau_Ramaniuk.tex
+├── DA4_Assignment_2_Uladzislau_Ramaniuk.pdf
 ├── pyproject.toml
+├── requirements.txt
+├── uv.lock
 └── README.md
 ```
