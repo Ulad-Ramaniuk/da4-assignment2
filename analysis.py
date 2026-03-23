@@ -62,19 +62,26 @@ if os.path.exists(WDI_FILE):
     })
 
 else:
-    print("data/wdi_raw.csv not found - downloading from World Bank API (this may take a minute)...")
+    print("data/wdi_raw.csv not found - downloading from World Bank API...")
     indicators = {
         'NY.GDP.PCAP.PP.KD': 'gdp_pc',
         'EN.GHG.CO2.PC.CE.AR5': 'co2_pc',
         'EG.USE.PCAP.KG.OE': 'energy'
     }
-    df_api = wbdata.get_dataframe(indicators).reset_index()
+    # Get country list with codes first
+    all_countries = wbdata.get_countries()
+    country_list = [c['id'] for c in all_countries 
+                    if c['region']['id'] != 'NA']  # excludes aggregates
+    
+    df_api = wbdata.get_dataframe(indicators, country=country_list).reset_index()
     df_api = df_api.rename(columns={'date': 'year', 'country': 'Country Name'})
     df_api['year'] = df_api['year'].astype(int)
-    all_countries = wbdata.get_countries()
+    
+    # Get country codes from the same list
     code_map = {c['name']: c['id'] for c in all_countries}
     df_api['Country Code'] = df_api['Country Name'].map(code_map)
-    df_wide = df_api[['Country Name', 'Country Code', 'year', 'gdp_pc', 'co2_pc', 'energy']].copy()
+    df_wide = df_api[['Country Name', 'Country Code', 'year', 
+                       'gdp_pc', 'co2_pc', 'energy']].copy()
     print("Download complete.")
 
 # Filter to 1992 onwards (as per assignment)
