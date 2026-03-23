@@ -16,7 +16,7 @@ The script reads pre-downloaded World Bank data from three CSV files committed t
 | `data/services_cache.csv` | Services share of GDP via `wbdata` API |
 | `data/income_cache.csv` | World Bank income-group classifications |
 
-If these files are absent, the script falls back to a live World Bank API download. That fallback **may fail** (rate limits, API changes) and **will not necessarily reproduce the exact same country sample or numbers cited in the paper**.
+If these files are absent, the script falls back to a live World Bank API download. That fallback **may fail** (rate limits, API changes) and **will not necessarily reproduce the exact same country sample or numbers cited in the report**.
 
 ---
 
