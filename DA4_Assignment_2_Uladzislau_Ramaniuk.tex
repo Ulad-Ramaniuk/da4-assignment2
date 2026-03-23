@@ -1,0 +1,478 @@
+\documentclass[12pt, a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{array}
+\usepackage{siunitx}
+\usepackage{threeparttable}
+\usepackage{dcolumn}
+\usepackage{xcolor}
+\usepackage{mdframed}
+\usepackage{adjustbox}
+
+\onehalfspacing
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue
+}
+
+% ── Title ─────────────────────────────────────────────────────────────────────
+\title{
+    \large\textbf{DA4 Assignment 2: Panel Data Exercise}\\[0.5em]
+    \LARGE\textbf{Economic Growth and CO\textsubscript{2} Emissions:\\
+    A Panel Data Analysis}
+}
+\author{
+    Uladzislau Ramaniuk\\
+    \small Central European University\\
+    \small \href{https://github.com/Ulad-Ramaniuk/da4-assignment2}{github.com/Ulad-Ramaniuk/da4-assignment2}
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+% ── ABSTRACT ──────────────────────────────────────────────────────────────────
+\begin{abstract}
+\noindent
+This report examines the relationship between economic activity and CO\textsubscript{2} emissions using a country-level panel from the World Development Indicators spanning 176 countries over 1992--2024. Six model specifications---cross-sectional OLS, first-difference, and two-way fixed effects---consistently confirm a positive and significant GDP--CO\textsubscript{2} elasticity, but reveal that the magnitude depends critically on the estimation strategy. Linear cross-sectional estimates (1.13--1.32) are upward-biased due to omitted country heterogeneity and non-stationarity. First-difference and fixed effects models, which address these issues, yield elasticities of 0.48--0.60. Importantly, a linear specification misrepresents the underlying relationship: a quadratic fixed effects model provides significantly better fit ($R^2$ rising from 0.289 to 0.380) and reveals an inverted-U Environmental Kuznets Curve with a turning point at approximately \$37,058 PPP. Income-group heterogeneity corroborates this nonlinearity---the elasticity peaks among lower-middle-income industrialising countries (0.85) and falls sharply among high-income economies (0.31). Energy use per capita is identified as the primary transmission mechanism, explaining nearly half of the gross GDP effect.
+\end{abstract}
+
+\newpage
+
+% ── 1. DATA DESCRIPTION ───────────────────────────────────────────────────────
+\section{Data Description}
+
+This study examines the relationship between economic activity and CO\textsubscript{2} emissions using country-level panel data from the World Bank's World Development Indicators (WDI) database, covering 1992 to 2024. The two main variables of interest are GDP per capita, measured in purchasing power parity (PPP) at constant 2021 international dollars, and CO\textsubscript{2} emissions per capita, measured in tonnes of CO\textsubscript{2} equivalent per capita (series EN.GHG.CO2.PC.CE.AR5). Energy use per capita (kg of oil equivalent, series EG.USE.PCAP.KG.OE) serves as the primary confounder, and the services share of GDP (series NV.SRV.TOTL.ZS) is included as an additional robustness control.
+
+GDP per capita, CO\textsubscript{2} emissions per capita, and energy use were downloaded from the WDI DataBank interface. The services share of GDP was added as an additional control variable, motivated by the concern that structural transformation confounds the GDP--CO\textsubscript{2} relationship: higher-income countries tend to have larger service sectors, which are less carbon-intensive than manufacturing. Omitting this channel would attribute to income growth what is partly a structural composition effect, biasing the GDP coefficient upward. The services share indicator was retrieved programmatically via the \texttt{wbdata} Python API.
+
+\subsection*{Sample Construction}
+
+The raw dataset covers 266 entities, including sovereign countries, territories, and World Bank aggregates, for the period 1960--2024. The following cleaning steps were applied:
+
+\begin{enumerate}
+    \item \textbf{Years filter:} Restricted to 1992--2024 per assignment requirements.
+    \item \textbf{Coverage filter:} Countries with fewer than 50\% of years available for either GDP or CO\textsubscript{2} were dropped, removing 22 countries with severely incomplete records (e.g., North Korea, Cuba, Venezuela).
+    \item \textbf{Aggregate removal:} World Bank regional and income aggregates were removed using keyword matching, as these are not sovereign countries.
+    \item \textbf{Territory removal:} Ten non-sovereign territories were excluded (e.g., Puerto Rico, Hong Kong SAR), as their GDP and emissions structures are unrepresentative of independent economies.
+    \item \textbf{Zero values:} Observations with zero CO\textsubscript{2} or GDP were dropped, as logarithms are undefined at zero.
+\end{enumerate}
+
+The final sample comprises \textbf{176 countries} and \textbf{5,793 observations}. Table~\ref{tab:sumstats} presents summary statistics for the key variables.
+
+\subsection*{Functional Form}
+
+Following standard practice in environmental economics, all variables are transformed to natural logarithms. This yields a log-log specification in which coefficients are interpreted as elasticities: a 1\% increase in GDP per capita is associated with a $\beta$\% change in CO\textsubscript{2} per capita. The log transformation also reduces right skewness and stabilises variance across the large range of income levels in the data.
+
+A key question is whether a \emph{linear} log-log specification is adequate, or whether the GDP--CO\textsubscript{2} relationship itself is nonlinear. The Environmental Kuznets Curve (EKC) hypothesis---which predicts emissions first rise then fall as income grows---motivates augmenting the linear model with a quadratic log GDP term. As Section~\ref{sec:ext} demonstrates, the nonlinear specification is strongly preferred by the data on both statistical and economic grounds.
+
+\begin{table}[H]
+\centering
+\caption{Summary Statistics (1992--2024)}
+\label{tab:sumstats}
+\begin{threeparttable}
+\begin{tabular}{lrrrrr}
+\toprule
+Variable & N & Mean & Std.\ Dev. & Min & Max \\
+\midrule
+Log GDP per capita (PPP) & 5,793 & 9.315 & 1.180 & 6.236 & 11.889 \\
+Log CO\textsubscript{2} per capita & 5,793 & 0.517 & 1.767 & $-$6.338 & 5.313 \\
+Log Energy use per capita & 4,403 & 7.170 & 1.106 & 2.275 & 9.978 \\
+Log Services share of GDP & 5,387 & 3.943 & 0.253 & 1.864 & 4.545 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} All variables in natural logarithms. Energy and services have fewer observations due to data availability. The wide range of log CO\textsubscript{2} (from $-$6.3 to 5.3) reflects substantial cross-country heterogeneity in emission intensity, motivating the use of fixed effects and nonlinear specifications.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+% ── 2. RESULTS ────────────────────────────────────────────────────────────────
+\section{Results}
+
+Table~\ref{tab:main} presents results for all six required model specifications. A key takeaway is that both the estimation strategy and the choice between linear and nonlinear specifications materially affect the estimates. We discuss each in turn.
+
+\subsection{Cross-Section OLS (Models 1 \& 2)}
+
+Cross-sectional OLS for 2005 yields a GDP per capita elasticity of 1.32 ($p < 0.01$, $R^2 = 0.741$): richer countries emit 1.32\% more CO\textsubscript{2} per capita for every 1\% higher GDP. By 2024 that figure dropped to 1.13 ($p < 0.01$, $R^2 = 0.702$), which hints at some gradual decoupling. That said, these numbers are almost certainly inflated. A cross-section cannot distinguish a genuine income effect from all the other ways rich and poor countries differ---geography, industrial history, institutions---that happen to correlate with both income and emissions. On top of that, unit root tests in Section~\ref{sec:ext} show that both series lack a stable mean (unit roots not rejected for roughly 90\% of countries), and a reliable cointegrating relationship between them exists for only 11.4\% of country pairs. Regressing two non-stationary series on each other in a cross-section is a well-known recipe for spurious results. These estimates are best read as descriptive snapshots rather than causal claims.
+
+\subsection{First Difference Models (Models 3--5)}
+
+First-differencing removes unit roots and wipes out any time-invariant country characteristics in one step, so the models focus purely on year-to-year within-country changes. That makes them the most credible \emph{linear} causal specification in this setting.
+
+Across all three models the contemporaneous GDP growth elasticity comes in positive, highly significant, and much smaller than the cross-sectional figures: 0.509 (no lags), 0.481 (2-year lags), and 0.535 (6-year lags). In practical terms, a country that grows 1 percentage point faster can expect emissions to grow by about half a percentage point faster too. A small negative time trend ($-0.0006$, $p < 0.01$) shows up consistently in all three models---roughly 0.06 percentage points less emission growth per year regardless of income, likely reflecting background improvements in energy efficiency and technology.
+
+Lagged effects are relatively minor. The 2-year lag (Model 4) is indistinguishable from zero (0.040, $p = 0.157$). The 6-year lag (Model 5) is marginally significant (0.055, $p = 0.099$), which could reflect the delayed emissions footprint of long-lived infrastructure investment.
+
+\subsection{Fixed Effects Model (Model 6)}
+
+The two-way fixed effects (TWFE) model controls for everything that is constant within a country over time, and also for shocks that hit all countries in a given year---business cycles, global commodity price swings, the COVID-19 recession. What remains is the within-country, within-year variation that identifies the GDP--emissions link. The estimated elasticity is 0.60 ($p < 0.01$, within $R^2 = 0.289$)---well below the cross-section, which confirms that between-country differences were doing a lot of the work in Models 1 and 2. The negative Between $R^2$ ($-7.25$) is expected: by construction, the fixed effects model says nothing about why Germany emits differently from India; it only tracks how each country changes over time relative to its own average.
+
+\begin{table}[H]
+\centering
+\caption{Main Results: All Six Model Specifications}
+\label{tab:main}
+\begin{adjustbox}{max width=\textwidth}
+\begin{threeparttable}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{2}{c}{Cross-Section OLS} & \multicolumn{3}{c}{First Difference} & Fixed Effects \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-6}\cmidrule(lr){7-7}
+ & OLS 2005 & OLS 2024 & No Lags & 2yr Lags & 6yr Lags & Baseline \\
+ & (1) & (2) & (3) & (4) & (5) & (6) \\
+\midrule
+Log GDP per capita
+    & 1.3202*** & 1.1316*** & & & & 0.5992*** \\
+    & (0.052)   & (0.057)   & & & & (0.082)   \\[4pt]
+$\Delta$ Log GDP per capita
+    & & & 0.5090*** & 0.4812*** & 0.5348*** & \\
+    & & & (0.043)   & (0.040)   & (0.040)   & \\[4pt]
+$\Delta$ Log GDP (lag 2)
+    & & & & 0.0397 & & \\
+    & & & & (0.028) & & \\[4pt]
+$\Delta$ Log GDP (lag 6)
+    & & & & & 0.0545* & \\
+    & & & & & (0.033) & \\[4pt]
+Time trend
+    & & & $-$0.0006*** & $-$0.0006*** & $-$0.0006*** & \\
+    & & & (0.000)     & (0.000)     & (0.000)     & \\
+\midrule
+Country FE   & No  & No  & No    & No    & No    & Yes   \\
+Time FE      & No  & No  & No    & No    & No    & Yes   \\
+Observations & 176 & 170 & 5,617 & 5,265 & 4,561 & 5,793 \\
+$R^2$ / Within $R^2$ & 0.741 & 0.702 & 0.069 & 0.072 & 0.082 & 0.289 \\
+Between $R^2$ & --- & --- & --- & --- & --- & $-$7.254 \\
+SE type & HC3 & HC3 & HC3 & HC3 & HC3 & Clustered \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} Standard errors in parentheses. HC3 heteroskedasticity-robust SE for OLS and first-difference models; SE clustered by country for the fixed effects model. Dependent variable: log CO\textsubscript{2} per capita for Models 1, 2, 6; $\Delta$ log CO\textsubscript{2} per capita for Models 3--5. The negative Between $R^2$ in Model 6 reflects the fact that two-way fixed effects are identified from within-country variation only---they neither explain nor claim to explain cross-sectional income differences. *** $p<0.01$, ** $p<0.05$, * $p<0.1$.
+\end{tablenotes}
+\end{threeparttable}
+\end{adjustbox}
+\end{table}
+
+% ── 3. CONFOUNDER ANALYSIS ────────────────────────────────────────────────────
+\section{Confounder Analysis}
+
+The linear models above capture the \emph{total} association between GDP and emissions, but they don't tell us how that link works. The most obvious candidate mechanism is energy use: richer countries burn more energy, and burning energy is what physically produces CO\textsubscript{2}. If energy use is left out of the model, its contribution gets folded into the GDP coefficient, pushing it upward. Table~\ref{tab:confounders} shows what happens when we add log energy use per capita to Models 1, 4, and 6.
+
+The results shift noticeably:
+
+\begin{itemize}
+    \item \textbf{Model 1} (OLS 2005): The GDP coefficient drops from 1.32 to 0.80---a 39\% reduction---while energy is strongly significant (0.491, $p < 0.01$). Put differently, about two-fifths of the raw cross-sectional income--emissions correlation is explained by the fact that richer countries simply use more energy.
+    \item \textbf{Model 4} (FD, 2-year lags): GDP coefficient drops significantly (0.481 to 0.320), while energy growth carries a large, significant coefficient (0.662, $p < 0.01$). The takeaway is that year-to-year swings in energy consumption are the main driver of short-run emission fluctuations—income growth matters, but its short-term impact is largely operating through energy demand.
+    \item \textbf{Model 6} (Fixed Effects): The biggest adjustment. The GDP coefficient falls from 0.60 to 0.33---a 45\% drop---while energy is large and highly significant (0.814, $p < 0.01$). This means that now a 1\% within-country increase in GDP is linked to just a 0.33\% increase in emissions.
+\end{itemize}
+
+Beyond the shifts in coefficients, the inclusion of energy use substantially improves overall model fit across all specifications. While the cross-sectional OLS model sees a modest $R^2$ increase (from 0.741 to 0.799). In the first-difference specification (Model 4), the $R^2$ nearly doubles from 0.072 to 0.142, revealing that short-term fluctuations in energy demand explain as much variation in emissions growth as economic growth itself. Similarly, the within-$R^2$ in the fixed effects model (Model 6) surges from 0.289 to 0.488, demonstrating that energy consumption accounts for an additional 20 percentage points of the explained within-country variance in CO\textsubscript{2} trajectories.
+
+\begin{table}[H]
+\centering
+\caption{Confounder Analysis: Energy Use (Models 1, 4, 6)}
+\label{tab:confounders}
+\begin{adjustbox}{max width=\textwidth}
+\begin{threeparttable}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{2}{c}{OLS 2005} & \multicolumn{2}{c}{FD 2yr Lags} & \multicolumn{2}{c}{Fixed Effects} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+ & Baseline & + Energy & Baseline & + Energy & Baseline & + Energy \\
+ & (1) & (2) & (3) & (4) & (5) & (6) \\
+\midrule
+Log GDP per capita
+    & 1.3202*** & 0.7971*** & & & 0.5992*** & 0.3348*** \\
+    & (0.052)   & (0.149)   & & & (0.082)   & (0.080)   \\[4pt]
+$\Delta$ Log GDP per capita
+    & & & 0.4812*** & 0.3199*** & & \\
+    & & & (0.040)   & (0.0315)   & & \\[4pt]
+Log Energy use per capita
+    & & 0.4912*** & & & & 0.8135*** \\
+    & & (0.131)   & & & & (0.128)   \\[4pt]
+$\Delta$ Log Energy use per capita
+    & & & & 0.6615*** & & \\
+    & & & & (0.046)   & & \\[4pt]
+$\Delta$ Log GDP (lag 2)
+    & & & 0.0397 & -0.006 & & \\
+    & & & (0.028) & (0.024) & & \\[4pt]
+Time trend
+    & & & $-$0.001*** & $-$0.000** & & \\
+    & & & (0.000)     & (0.000)    & & \\
+\midrule
+Country FE   & No  & No  & No    & No    & Yes   & Yes   \\
+Time FE      & No  & No  & No    & No    & Yes   & Yes   \\
+Observations & 176 & 164 & 5,265 & 3,971 & 5,793 & 4,403 \\
+$R^2$ / Within $R^2$ & 0.741 & 0.799 & 0.072 & 0.142 & 0.289 & 0.488 \\
+SE type & HC3 & HC3 & HC3 & HC3 & Clustered & Clustered \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} Standard errors in parentheses. HC3 robust SE for OLS/FD models; clustered by country for FE models. Smaller samples in confounder models reflect missing energy data. The GDP coefficient falls by 39\% (OLS) and 45\% (FE) when energy is added, confirming substantial upward bias in the baseline. *** $p<0.01$, ** $p<0.05$, * $p<0.1$.
+\end{tablenotes}
+\end{threeparttable}
+\end{adjustbox}
+\end{table}
+
+\subsection*{Looking Ahead}
+ 
+The models above are useful, but they all share one blind spot: they assume the GDP--CO\textsubscript{2} relationship is the same at every income level---whether a country earns \$5,000 per capita or \$50,000. That is a strong assumption, and the next section tests whether it holds.
+
+
+% ── 4. EXTENSIONS ─────────────────────────────────────────────────────────────
+\section{Extensions}
+\label{sec:ext}
+ 
+\subsection{Unit Root and Cointegration Tests}
+ 
+A fundamental concern with regressions in levels is spurious correlation driven by shared non-stationarity. Augmented Dickey-Fuller (ADF) tests applied country-by-country confirm that both series are overwhelmingly non-stationary: only 9.1\% of countries reject the unit root null for log GDP, and 10.2\% for log CO\textsubscript{2}, with median $p$-values of 0.618 and 0.566 respectively. For a levels regression to be valid, the two series would need to be cointegrated---a long-run equilibrium relationship that prevents them from drifting apart indefinitely. Engle-Granger cointegration tests find that this condition holds for only 11.4\% of country pairs (median $p$-value 0.479).
+ 
+These results carry two immediate implications. First, they formally justify first-difference models as the primary causal specification---differencing renders both series stationary by construction. Second, they imply that cross-sectional level regressions (Models 1 and 2) and the baseline two-way fixed effects model should be interpreted with caution, as the stationarity assumption underlying standard inference is violated for the majority of the sample. The fixed effects model can still be informative about within-country dynamics, but its level specification is technically misspecified for countries where no cointegrating relationship exists.
+ 
+\subsection{Nonlinearity and the Environmental Kuznets Curve}
+\label{subsec:ekc}
+ 
+All the models so far impose a constant elasticity---the same relationship whether a country earns \$1,000 per person or \$60,000. That is hard to defend. The Environmental Kuznets Curve (EKC) hypothesis offers a more realistic picture: emissions rise with industrialisation early on, then peak and fall as incomes grow further, environmental preferences strengthen, and the economy shifts toward services. The predicted shape is an inverted U between log income and log emissions.
+ 
+To test this, we add a quadratic log GDP term to the two cross-sectional OLS models and to the fixed effects model:
+ 
+\begin{equation}
+    \log \text{CO}_{2,it} = \alpha_i + \gamma_t + \beta_1 \log \text{GDP}_{it} + \beta_2 (\log \text{GDP}_{it})^2 + \varepsilon_{it}
+    \label{eq:ekc}
+\end{equation}
+ 
+Table~\ref{tab:ekc_main} compares linear and quadratic specifications side by side for all three model types. The nonlinear pattern holds consistently across all of them: $\hat{\beta}_2 < 0$ and statistically significant in every EKC column. The fixed effects EKC model improves within $R^2$ from 0.289 to \textbf{0.380}---a 31\% gain from a single extra term. That is not a marginal tweak; it means a linear model is systematically misrepresenting the shape of this relationship. The cross-sectional EKC results ($R^2$ gains of 0.6--1.1 percentage points) are smaller but consistent, confirming the curvature is not an artefact of the panel dimension.
+
+\begin{equation}
+    \log \text{CO}_{2,it} = \alpha_i + \gamma_t + \beta_1 \log \text{GDP}_{it} + \beta_2 (\log \text{GDP}_{it})^2 + \varepsilon_{it}
+    \label{eq:ekc}
+\end{equation}
+ 
+Table~\ref{tab:ekc_main} compares linear and quadratic specifications side by side for all three model types, and adds an energy-controlled EKC column as a robustness check. The nonlinear pattern holds consistently: $\hat{\beta}_2 < 0$ and statistically significant in every EKC column. The fixed effects EKC model improves within $R^2$ from 0.289 to \textbf{0.380}---a 31\% gain from a single extra term. Crucially, the curvature survives the addition of energy use (column 7), confirming that the inverted-U is not just a proxy for energy intensity declining with income.
+ 
+\begin{table}[H]
+\centering
+\caption{Linear vs.\ Nonlinear (EKC): OLS and Fixed Effects}
+\label{tab:ekc_main}
+\begin{adjustbox}{max width=\textwidth}
+\begin{threeparttable}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccccccc}
+\toprule
+ & \multicolumn{2}{c}{OLS 2005} & \multicolumn{2}{c}{OLS 2024} & \multicolumn{3}{c}{Fixed Effects} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-8}
+ & Linear & EKC & Linear & EKC & Linear & EKC & EKC+Energy \\
+ & (1) & (2) & (3) & (4) & (5) & (6) & (7) \\
+\midrule
+Log GDP per capita
+    & 1.3202*** & 3.0506***  & 1.1316*** & 3.3705***  & 0.5992*** & 3.9477*** & 3.6069*** \\
+    & (0.052)   & (0.671)    & (0.057)   & (0.794)    & (0.082)   & (0.612)   & (0.409)   \\[4pt]
+Log GDP per capita$^2$
+    &           & $-$0.0938*** &         & $-$0.1184*** &         & $-$0.1876*** & $-$0.1839*** \\
+    &           & (0.036)    &           & (0.042)    &           & (0.032)   & (0.022)   \\[4pt]
+Log Energy use per capita
+    &           &            &           &            &           &           & 0.8242*** \\
+    &           &            &           &            &           &           & (0.113)   \\
+\midrule
+Country FE     & No    & No    & No    & No    & Yes   & Yes   & Yes   \\
+Time FE        & No    & No    & No    & No    & Yes   & Yes   & Yes   \\
+Observations   & 176   & 176   & 170   & 170   & 5,793 & 5,793 & 4,403 \\
+$R^2$ / Within $R^2$ & 0.741 & 0.747 & 0.702 & 0.713 & 0.289 & 0.380 & 0.622 \\
+SE type        & \multicolumn{4}{c}{HC3 Robust} & \multicolumn{3}{c}{Clustered by country} \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} EKC = quadratic log GDP specification. The negative and significant $\hat{\beta}_2$ holds across all specifications, including when energy use is added (column 7). The turning point shifts from \$37,058 PPP (column 6) to \$18,166 PPP (column 7), suggesting that part of the baseline EKC effect runs through declining energy intensity rather than income alone. *** $p<0.01$, ** $p<0.05$, * $p<0.1$.
+\end{tablenotes}
+\end{threeparttable}
+\end{adjustbox}
+\end{table}
+ 
+The baseline FE EKC model (column 6) implies a turning point of:
+ 
+\begin{equation}
+    \text{GDP}^* = \exp\!\left(\frac{-\hat{\beta}_1}{2\hat{\beta}_2}\right) = \exp(10.520) \approx \$37{,}058 \text{ (PPP)}
+    \label{eq:tp}
+\end{equation}
+ 
+Once energy use is controlled for (column 7), the turning point shifts down to approximately \$18,166 PPP. This is an informative finding: part of what the baseline model attributes to income-driven structural change is actually working through declining energy intensity. Countries above \$37,058 are clearly past the baseline turning point. Austria (around \$60,000) and Germany (around \$56,000) are well past even the more conservative energy-controlled threshold. Hungary (around \$35,000) sits near the baseline threshold but above the energy-adjusted one. Belarus (around \$23,000) and China (around \$21,000) are above the energy-controlled turning point but still climbing toward the baseline, while India (around \$9,000) remains on the upward segment under both specifications.
+ 
+\subsection{Income Group Heterogeneity}
+ 
+If the EKC curve is real, income groups should show a clear gradient: countries on the upward slope should have high elasticities, those past the turning point much lower ones. Figure~\ref{fig:income} and Table~\ref{tab:income} test this with separate TWFE regressions for each World Bank income group.
+ 
+The pattern lines up exactly with EKC predictions. The elasticity peaks among lower-middle-income countries (0.850)---economies in the thick of industrialisation. It falls through upper-middle income (0.549) and reaches its lowest among high-income countries (0.311), which have largely moved to service-based, lower-carbon growth. The confidence intervals for the lower-middle and high-income groups do not overlap, so the gap is statistically meaningful, not just noise. A pooled linear elasticity would blend all of this into one number and miss the story.
+ 
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.56\textwidth}
+        \includegraphics[width=\textwidth]{income_group_coefs.png}
+        \caption{GDP--CO\textsubscript{2} elasticity by income group (TWFE, robust SE). Red dashed line = full-sample elasticity (0.60).}
+        \label{fig:income}
+    \end{subfigure}
+    \vspace{2em}
+    \begin{subfigure}[t]{0.90\textwidth}
+        \includegraphics[width=\textwidth]{scatter_gdp_co2.png}
+        \caption{GDP vs.\ CO\textsubscript{2} per capita, 2005 and 2024. The declining OLS slope (1.32 $\to$ 1.13) suggests partial decoupling as more countries cross the EKC turning point.}
+        \label{fig:scatter}
+    \end{subfigure}
+    \caption{Visualisation of the GDP--CO\textsubscript{2} relationship}
+\end{figure}
+ 
+\begin{table}[H]
+\centering
+\caption{GDP--CO\textsubscript{2} Elasticity by Income Group (Two-Way Fixed Effects)}
+\label{tab:income}
+\begin{threeparttable}
+\begin{tabular}{lcccc}
+\toprule
+Income Group & Coefficient & Std.\ Error & 95\% CI & $N$ \\
+\midrule
+Low income          & 0.657 & 0.072 & {[}0.515,\ 0.799{]} &   649 \\
+Lower middle income & 0.850 & 0.058 & {[}0.737,\ 0.964{]} & 1,582 \\
+Upper middle income & 0.549 & 0.069 & {[}0.413,\ 0.685{]} & 1,583 \\
+High income         & 0.311 & 0.033 & {[}0.247,\ 0.376{]} & 1,946 \\
+\midrule
+Full sample         & 0.599 & 0.082 & {[}0.562,\ 0.636{]} & 5,793 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} Each row reports the log GDP per capita coefficient from a separate two-way fixed effects regression with SE clustered by country. The non-overlapping CIs for lower-middle and high-income groups confirm statistically meaningful heterogeneity, consistent with the EKC curve estimated in Section~\ref{subsec:ekc}.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+% ── 5. CONCLUSION ─────────────────────────────────────────────────────────────
+% ── 5. CONCLUSION ─────────────────────────────────────────────────────────────
+\section{Conclusion}
+ 
+Using a panel of 176 countries over 1992--2024, this report finds that economic growth and CO\textsubscript{2} emissions move together, though the estimation strategy dictates the relationship's interpretation. Naive cross-sectional OLS elasticities (1.13--1.32) are upward-biased by unobserved heterogeneity. Furthermore, unit root and cointegration tests confirm that roughly 90\% of the series are non-stationary and only 11\% are cointegrated, rendering standard level regressions susceptible to spurious correlation. To address this non-stationarity and capture short-run dynamics, first-difference models yield a baseline elasticity of 0.48--0.53; crucially, controlling for energy demand in this specification nearly doubles its explained variance ($R^2$ rising from 0.072 to 0.142). While these short-run models cannot be directly compared to level specifications via $R^2$, fixed effects models remain highly valuable for exploring long-run within-country dynamics. Among these, a linear fixed effects fit (within $R^2 = 0.289$) proves inadequate. Adding a quadratic income term confirms an inverted-U Environmental Kuznets Curve, raising the within $R^2$ to 0.380 and identifying a baseline turning point around \$37,058 PPP. However, the most comprehensive long-run specification---the fixed effects EKC model augmented with energy use---drives the within $R^2$ up to 0.622 and shifts the turning point down to \$18,166 PPP. This reveals that much of the observed income-driven decoupling actually operates through declining energy intensity. Income-group regressions corroborate this structural shift, with elasticities falling from 0.85 among industrialising lower-middle-income economies to just 0.31 among high-income ones.
+
+\newpage
+% ── APPENDIX ──────────────────────────────────────────────────────────────────
+\appendix
+
+\section{Additional Tables and Robustness Checks}
+
+\subsection*{A1: Nonlinear Cross-Section OLS Specifications}
+
+The EKC pattern is not unique to the fixed effects setting. Table~\ref{tab:ekc_ols} shows that adding a quadratic log GDP term to the cross-sectional OLS models also yields statistically significant curvature in both 2005 and 2024, with $\hat{\beta}_2 < 0$ in both cases. While the level $R^2$ improvement is modest (0.741 $\to$ 0.747 and 0.702 $\to$ 0.713), the significance of the quadratic term confirms that the nonlinearity is a genuine feature of the cross-sectional income--emissions relationship, not an artefact of the panel dimension.
+
+\begin{table}[H]
+\centering
+\caption{Nonlinear (EKC) Cross-Section OLS Models}
+\label{tab:ekc_ols}
+\begin{adjustbox}{max width=\textwidth}
+\begin{threeparttable}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lcccc}
+\toprule
+ & OLS 2005 & OLS 2005 EKC & OLS 2024 & OLS 2024 EKC \\
+ & (1) & (2) & (3) & (4) \\
+\midrule
+Log GDP per capita
+    & 1.3202*** & 3.0506***    & 1.1316*** & 3.3705*** \\
+    & (0.052)   & (0.671)      & (0.057)   & (0.794)   \\[4pt]
+Log GDP per capita$^2$
+    &           & $-$0.0938*** &           & $-$0.1184*** \\
+    &           & (0.036)      &           & (0.042)   \\
+\midrule
+Observations & 176   & 176   & 170   & 170   \\
+$R^2$        & 0.741 & 0.747 & 0.702 & 0.713 \\
+SE type      & \multicolumn{4}{c}{HC3 Robust} \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} HC3 robust SE in parentheses. The negative and significant quadratic coefficient in both EKC columns confirms inverted-U curvature in the cross-section. *** $p<0.01$, ** $p<0.05$, * $p<0.1$.
+\end{tablenotes}
+\end{threeparttable}
+\end{adjustbox}
+\end{table}
+
+\subsection*{A2: Fixed Effects Robustness --- Services Share Confounder}
+
+Table~\ref{tab:services} adds the services share of GDP as a second confounder. Its coefficient is negative and statistically significant ($-0.277$, $p < 0.01$): a 1\% larger services sector is associated with 0.28\% lower CO\textsubscript{2} per capita within countries, consistent with structural transformation away from carbon-intensive manufacturing. However, its impact on the GDP coefficient is modest relative to energy (0.599 $\to$ 0.674 without energy, compared to 0.599 $\to$ 0.335 with energy), suggesting that the services channel operates primarily \emph{through} reduced energy intensity rather than independently of it.
+
+\begin{table}[H]
+\centering
+\caption{Fixed Effects Models with Services Share Confounder}
+\label{tab:services}
+\begin{adjustbox}{max width=\textwidth}
+\begin{threeparttable}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lcccc}
+\toprule
+ & Baseline & + Energy & + Services & + Both \\
+ & (1) & (2) & (3) & (4) \\
+\midrule
+Log GDP per capita
+    & 0.5992*** & 0.3348*** & 0.6739*** & 0.3994*** \\
+    & (0.082)   & (0.080)   & (0.108)   & (0.104)   \\[4pt]
+Log Energy use per capita
+    &           & 0.8135*** &           & 0.8587*** \\
+    &           & (0.128)   &           & (0.119)   \\[4pt]
+Log Services share of GDP
+    &           &           & $-$0.2765*** & $-$0.1956* \\
+    &           &           & (0.102)      & (0.111)   \\
+\midrule
+Country FE   & Yes   & Yes   & Yes   & Yes   \\
+Time FE      & Yes   & Yes   & Yes   & Yes   \\
+Observations & 5,793 & 4,403 & 5,387 & 4,154 \\
+Within $R^2$ & 0.289 & 0.488 & 0.307 & 0.514 \\
+SE type      & \multicolumn{4}{c}{Clustered by country} \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} SE clustered by country. The services coefficient is significant in both columns but its impact on the GDP coefficient is modest compared to energy, suggesting structural transformation reduces emissions primarily by lowering energy intensity per unit of output. *** $p<0.01$, ** $p<0.05$, * $p<0.1$.
+\end{tablenotes}
+\end{threeparttable}
+\end{adjustbox}
+\end{table}
+
+\subsection*{A3: Countries Dropped from Sample}
+
+The following entities were excluded due to insufficient data coverage (coverage filter, 22 entities): American Samoa, Andorra, British Virgin Islands, Cuba, Cura\c{c}ao, Djibouti, Eritrea, French Polynesia, Gibraltar, Guam, Korea (Dem.\ People's Rep.), Kosovo, Montenegro, New Caledonia, Northern Mariana Islands, San Marino, Serbia, Sint Maarten (Dutch part), South Sudan, Venezuela, West Bank and Gaza, and Yemen. 
+
+The following non-sovereign territories were excluded due to unrepresentative economic and emissions structures (territory filter, 10 entities): Puerto Rico, Virgin Islands (U.S.), Cayman Islands, Turks and Caicos Islands, Aruba, Bermuda, Greenland, Faroe Islands, Hong Kong SAR, and Macao SAR.
+
+ World Bank regional and income aggregates were removed via keyword matching on the following terms: income groups (low, middle, high), regional aggregates (Asia, Africa, Europe, America, Caribbean, Pacific, Arab World, South Asia, North America, Middle East), and special classifications (World, IDA, IBRD, OECD, Fragile, Heavily indebted, Least developed, and similar).
+
+\subsection*{A4: Reproducibility}
+
+All results are fully reproducible. Code and data are available at \url{https://github.com/Ulad-Ramaniuk/da4-assignment2}. To reproduce:
+\begin{verbatim}
+uv sync
+python analysis.py
+\end{verbatim}
+
+\end{document}
