@@ -6,6 +6,7 @@
 # =============================================================================
 # 0. IMPORTS
 # =============================================================================
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,41 +17,65 @@ import wbdata
 import warnings
 warnings.filterwarnings('ignore')
 
+# Auto-create output directories
+os.makedirs('output/figures', exist_ok=True)
+os.makedirs('data', exist_ok=True)
+
 # =============================================================================
 # 1. LOAD & RESHAPE DATA
 # =============================================================================
-df = pd.read_csv('data/wdi_raw.csv')
+WDI_FILE = 'data/wdi_raw.csv'
 
-# Keep only required series
-series_needed = ['NY.GDP.PCAP.PP.KD', 'EN.GHG.CO2.PC.CE.AR5', 'EG.USE.PCAP.KG.OE']
-df = df[df['Series Code'].isin(series_needed)]
+if os.path.exists(WDI_FILE):
+    print("Loading WDI data from local file...")
+    df = pd.read_csv(WDI_FILE)
 
-# Reshape from wide to long format
-year_cols = [col for col in df.columns if col.startswith('19') or col.startswith('20')]
-df_long = df.melt(
-    id_vars=['Country Name', 'Country Code', 'Series Code'],
-    value_vars=year_cols,
-    var_name='Year',
-    value_name='Value'
-)
+    # Keep only required series
+    series_needed = ['NY.GDP.PCAP.PP.KD', 'EN.GHG.CO2.PC.CE.AR5', 'EG.USE.PCAP.KG.OE']
+    df = df[df['Series Code'].isin(series_needed)]
 
-# Clean year column and convert values to numeric
-df_long['year'] = df_long['Year'].str[:4].astype(int)
-df_long['Value'] = pd.to_numeric(df_long['Value'], errors='coerce')
+    # Reshape from wide to long format
+    year_cols = [col for col in df.columns if col.startswith('19') or col.startswith('20')]
+    df_long = df.melt(
+        id_vars=['Country Name', 'Country Code', 'Series Code'],
+        value_vars=year_cols,
+        var_name='Year',
+        value_name='Value'
+    )
 
-# Pivot to wide format with one column per indicator
-df_wide = df_long.pivot_table(
-    index=['Country Name', 'Country Code', 'year'],
-    columns='Series Code',
-    values='Value'
-).reset_index()
+    # Clean year column and convert values to numeric
+    df_long['year'] = df_long['Year'].str[:4].astype(int)
+    df_long['Value'] = pd.to_numeric(df_long['Value'], errors='coerce')
 
-df_wide.columns.name = None
-df_wide = df_wide.rename(columns={
-    'NY.GDP.PCAP.PP.KD': 'gdp_pc',
-    'EN.GHG.CO2.PC.CE.AR5': 'co2_pc',
-    'EG.USE.PCAP.KG.OE': 'energy'
-})
+    # Pivot to wide format with one column per indicator
+    df_wide = df_long.pivot_table(
+        index=['Country Name', 'Country Code', 'year'],
+        columns='Series Code',
+        values='Value'
+    ).reset_index()
+
+    df_wide.columns.name = None
+    df_wide = df_wide.rename(columns={
+        'NY.GDP.PCAP.PP.KD': 'gdp_pc',
+        'EN.GHG.CO2.PC.CE.AR5': 'co2_pc',
+        'EG.USE.PCAP.KG.OE': 'energy'
+    })
+
+else:
+    print("data/wdi_raw.csv not found - downloading from World Bank API (this may take a minute)...")
+    indicators = {
+        'NY.GDP.PCAP.PP.KD': 'gdp_pc',
+        'EN.GHG.CO2.PC.CE.AR5': 'co2_pc',
+        'EG.USE.PCAP.KG.OE': 'energy'
+    }
+    df_api = wbdata.get_dataframe(indicators).reset_index()
+    df_api = df_api.rename(columns={'date': 'year', 'country': 'Country Name'})
+    df_api['year'] = df_api['year'].astype(int)
+    all_countries = wbdata.get_countries()
+    code_map = {c['name']: c['id'] for c in all_countries}
+    df_api['Country Code'] = df_api['Country Name'].map(code_map)
+    df_wide = df_api[['Country Name', 'Country Code', 'year', 'gdp_pc', 'co2_pc', 'energy']].copy()
+    print("Download complete.")
 
 # Filter to 1992 onwards (as per assignment)
 df_wide = df_wide[df_wide['year'] >= 1992]
@@ -108,11 +133,22 @@ print(f"Final sample: {df_clean['Country Name'].nunique()} countries, {df_clean.
 # 3. ADD SERVICES SHARE VIA API & INCOME GROUP CLASSIFICATIONS
 # =============================================================================
 
-# Download services share of GDP
-indicators = {'NV.SRV.TOTL.ZS': 'services_share'}
-df_services = wbdata.get_dataframe(indicators).reset_index()
-df_services = df_services.rename(columns={'date': 'year'})
-df_services['year'] = df_services['year'].astype(int)
+# Download services share of GDP (with local cache for offline use)
+SERVICES_CACHE = 'data/services_cache.csv'
+INCOME_CACHE = 'data/income_cache.csv'
+
+if os.path.exists(SERVICES_CACHE):
+    print("Loading services data from cache...")
+    df_services = pd.read_csv(SERVICES_CACHE)
+    df_services['year'] = df_services['year'].astype(int)
+else:
+    print("Downloading services data from World Bank API...")
+    indicators = {'NV.SRV.TOTL.ZS': 'services_share'}
+    df_services = wbdata.get_dataframe(indicators).reset_index()
+    df_services = df_services.rename(columns={'date': 'year'})
+    df_services['year'] = df_services['year'].astype(int)
+    df_services.to_csv(SERVICES_CACHE, index=False)
+    print(f"Services data cached to {SERVICES_CACHE}")
 
 df_clean = df_clean.merge(
     df_services,
@@ -121,13 +157,21 @@ df_clean = df_clean.merge(
     how='left'
 ).drop(columns=['country'])
 
-# Download income group classifications
-income_data = wbdata.get_countries()
-income_df = pd.DataFrame([
-    {'Country Code': c['id'], 'income_group': c['incomeLevel']['value']}
-    for c in income_data
-])
-income_df = income_df[~income_df['income_group'].isin(['Aggregates', 'Not classified'])]
+# Download income group classifications (with local cache for offline use)
+if os.path.exists(INCOME_CACHE):
+    print("Loading income group data from cache...")
+    income_df = pd.read_csv(INCOME_CACHE)
+else:
+    print("Downloading income group data from World Bank API...")
+    income_data = wbdata.get_countries()
+    income_df = pd.DataFrame([
+        {'Country Code': c['id'], 'income_group': c['incomeLevel']['value']}
+        for c in income_data
+    ])
+    income_df = income_df[~income_df['income_group'].isin(['Aggregates', 'Not classified'])]
+    income_df.to_csv(INCOME_CACHE, index=False)
+    print(f"Income data cached to {INCOME_CACHE}")
+
 df_clean = df_clean.merge(income_df, on='Country Code', how='left')
 
 # =============================================================================
